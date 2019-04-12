@@ -106,7 +106,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
           // Download content or use inline content
 
           if (feedItem.Link != null)
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient(new HttpClientHandler { UseCookies = false }))
             {
               client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
 
@@ -142,7 +142,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
             if (string.IsNullOrWhiteSpace(feedData.FeedCfg.Regex) == false)
             {
               var filteredContents = new List<string>();
-              var regex            = new Regex(feedData.FeedCfg.Regex);
+              var regex            = new Regex(feedData.FeedCfg.Regex, RegexOptions.Singleline);
               var matches          = regex.Matches(feedItem.Content);
 
               for (int i = 0; i < matches.Count; i++)
@@ -181,35 +181,42 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       int i          = 0;
       int totalCount = feedsData.Sum(fd => fd.NewItems.Count);
 
+      List<ElementBuilder> builders = new List<ElementBuilder>();
+
       progressCallback?.Invoke(i, totalCount);
 
       foreach (var feedData in feedsData)
       foreach (var feedItem in feedData.NewItems)
-        try
-        {
-          Svc.SMA.Registry.Element.Add(
-            new ElementBuilder(ElementType.Topic,
-                               new TextContent(true, feedItem.Content))
-              .WithParent(feedData.FeedCfg.RootDictElement)
-              .WithPriority(feedData.FeedCfg.Priority)
-              .WithReference(
-                // ReSharper disable once PossibleInvalidOperationException
-                r => r.WithDate(feedItem.PublishingDate.Value)
-                      .WithTitle(feedItem.Title)
-                      .WithAuthor(feedItem.Author)
-                      .WithComment(feedItem.Categories == null ? null : string.Join(", ", feedItem.Categories))
-                      .WithSource($"Feed: {feedData.FeedCfg.Name} ({feedData.FeedCfg.SourceUrl})")
-                      .WithLink(feedItem.Link))
-              .DoNotDisplay()
-          );
-          
-          progressCallback?.Invoke(++i, totalCount);
-        }
-        catch (Exception ex)
-        {
-          // TODO: report error through callback & display
-          LogTo.Error(ex, $"Exception while importing feed item in SuperMemo, for feed {feedData.FeedCfg.Name}, item title '{feedItem.Title}'");
-        }
+      {
+        builders.Add(
+
+          new ElementBuilder(ElementType.Topic,
+                             new TextContent(true, feedItem.Content))
+            .WithParent(feedData.FeedCfg.RootDictElement)
+            .WithPriority(feedData.FeedCfg.Priority)
+            .WithReference(
+              // ReSharper disable once PossibleInvalidOperationException
+              r => r.WithDate(feedItem.PublishingDate.Value)
+                    .WithTitle(feedItem.Title)
+                    .WithAuthor(feedItem.Author)
+                    .WithComment(feedItem.Categories == null ? null : string.Join(", ", feedItem.Categories))
+                    .WithSource($"Feed: {feedData.FeedCfg.Name} ({feedData.FeedCfg.SourceUrl})")
+                    .WithLink(feedItem.Link))
+            .DoNotDisplay()
+        );
+      }
+    
+      try
+      {
+        Svc.SMA.Registry.Element.Add(builders.ToArray());
+        
+        progressCallback?.Invoke(++i, totalCount);
+      }
+      catch (Exception ex)
+      {
+        // TODO: report error through callback & display
+        LogTo.Error(ex, "Exception while importing feed item in SuperMemo");
+      }
     }
 
     #endregion
