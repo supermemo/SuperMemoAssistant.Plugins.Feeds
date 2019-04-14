@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:43
-// Modified On:  2019/04/11 17:34
+// Modified On:  2019/04/13 23:03
 // Modified By:  Alexis
 
 #endregion
@@ -34,14 +34,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Anotar.Serilog;
 using CodeHollow.FeedReader;
+using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Interop.SuperMemo.Content.Contents;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Builders;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Models;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
+using SuperMemoAssistant.Plugins.Feeds.Extensions;
 using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Services;
 
@@ -53,19 +54,30 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 
     public static async Task<List<FeedData>> DownloadFeeds(FeedsCfg feedsCfg)
     {
+      LogTo.Debug("Downloading feeds");
       var res = await Task.WhenAll(feedsCfg.Feeds.Select(DownloadFeed));
 
-      return res.Where(fd => fd != null).ToList();
+      var feedsData = res.Where(fd => fd != null).ToList();
+      
+      LogTo.Debug($"Downloaded {feedsData.Sum(fd => fd.NewItems.Count)} items");
+
+      return feedsData;
     }
 
     private static async Task<FeedData> DownloadFeed(FeedCfg feedCfg)
     {
       try
       {
-        var feed = await FeedReader.ReadAsync(feedCfg.SourceUrl);
+        var lastRefresh = DateTime.Now;
+        var feed        = await FeedReader.ReadAsync(feedCfg.InterpolateUrl());
 
-        if (feed?.Items != null && feed.Items.Count > 0)
-          return new FeedData(feedCfg, feed);
+        if (feed?.Items == null || feed.Items.Count <= 0)
+          return null;
+
+        feedCfg.LastRefreshDate = lastRefresh;
+        var feedData = new FeedData(feedCfg, feed);
+
+        return await DownloadFeedContents(feedData);
       }
       catch (Exception ex)
       {
@@ -75,46 +87,65 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       return null;
     }
 
-    public static Task DownloadFeedsContents(List<FeedData> feedsData)
+    private static async Task<FeedData> DownloadFeedContents(FeedData feedData)
     {
-      return Task.WhenAll(feedsData.Select(DownloadFeedContent));
+      var feedItemTasks = feedData.Feed.Items.Select(feedItem => DownloadFeedContent(feedData.FeedCfg, feedItem));
+      var feedItems = await Task.WhenAll(feedItemTasks);
+
+      feedData.NewItems.AddRange(feedItems.Where(fi => fi != null));
+
+      if (feedData.NewItems.Any() == false)
+        return null;
+
+      return feedData;
     }
 
-    private static async Task DownloadFeedContent(FeedData feedData)
+    private static async Task<FeedItemExt> DownloadFeedContent(FeedCfg feedCfg, FeedItem feedItem)
     {
-      DateTime lastPubDate = feedData.FeedCfg.LastFeedDateTime;
-
-      foreach (var feedItem in feedData.Feed.Items)
         try
         {
           //
           // Check & update publishing dates
 
-          if (feedItem.PublishingDate == null)
+          if (feedCfg.UsePubDate)
           {
-            LogTo.Warning(
-              $"Date missing, or unknown format for feed {feedData.FeedCfg.Name}, item title '{feedItem.Title}', raw date '{feedItem.PublishingDateString}'");
-            continue;
+            if (feedItem.PublishingDate == null)
+            {
+              LogTo.Warning(
+                $"Date missing, or unknown format for feed {feedCfg.Name}, item title '{feedItem.Title}', raw date '{feedItem.PublishingDateString}'");
+              return null;
+            }
+
+            if (feedItem.PublishingDate <= feedCfg.LastPubDate)
+              return null;
           }
 
-          if (feedItem.PublishingDate <= feedData.FeedCfg.LastFeedDateTime)
-            continue;
+          //
+          // Check guid
 
-          lastPubDate = feedItem.PublishingDate > lastPubDate ? feedItem.PublishingDate.Value : lastPubDate;
+          if (feedCfg.UseGuid)
+            if (feedCfg.EntriesGuid.Contains(feedItem.Id))
+              return null;
+
+          //
+          // Check categories
+
+          if (feedCfg.ShouldExcludeCategory(feedItem))
+            return null;
 
           //
           // Download content or use inline content
 
           if (feedItem.Link != null)
-            using (HttpClient client = new HttpClient(new HttpClientHandler { UseCookies = false }))
+            using (var client = new HttpClient(new HttpClientHandler { UseCookies = false }))
             {
               client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
 
-              if (string.IsNullOrWhiteSpace(feedData.FeedCfg.Cookie) == false)
-                client.DefaultRequestHeaders.Add("Cookie", feedData.FeedCfg.Cookie);
+              if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
+                client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
 
               var httpReq = new HttpRequestMessage(HttpMethod.Get,
-                                                   feedItem.Link);
+                                                   feedItem.MakeLink(feedCfg));
               var httpResp = await client.SendAsync(httpReq);
 
               if (httpResp != null && httpResp.IsSuccessStatusCode)
@@ -126,57 +157,43 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
               {
                 feedItem.Content = null;
                 LogTo.Warning(
-                  $"Failed to download content for feed {feedData.FeedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
+                  $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
               }
             }
 
           else
             feedItem.Content = feedItem.Content ?? feedItem.Description;
 
+          if (string.IsNullOrWhiteSpace(feedItem.Content))
+            return null;
+
           //
           // Process content if necessary & push back
 
-          if (feedItem.Content != null)
-          {
-            // Optional regex
-            if (string.IsNullOrWhiteSpace(feedData.FeedCfg.Regex) == false)
-            {
-              var filteredContents = new List<string>();
-              var regex            = new Regex(feedData.FeedCfg.Regex, RegexOptions.Singleline);
-              var matches          = regex.Matches(feedItem.Content);
+          if (feedCfg.Filters.Any())
+            feedItem.Content = string.Join(
+              "\r\n",
+              feedCfg.Filters
+                      .Select(f => f.Filter(feedItem.Content))
+                      .Where(s => string.IsNullOrWhiteSpace(s) == false)
+            );
 
-              for (int i = 0; i < matches.Count; i++)
-              {
-                var match = matches[i];
-
-                if (match.Success == false)
-                  continue;
-
-                for (int j = 1; j < match.Groups.Count; j++)
-                  filteredContents.Add(match.Groups[j].Value);
-              }
-
-              feedItem.Content = string.Join("\r\n", filteredContents);
-            }
-
-            // Add feed item
-            feedData.NewItems.Add(feedItem);
-          }
+          // Add feed item
+          return new FeedItemExt(feedItem);
         }
         catch (Exception ex)
         {
-          LogTo.Error(ex, $"Exception while downloading content for feed {feedData.FeedCfg.Name}, item title '{feedItem.Title}'");
+          LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}'");
         }
 
-      // Update feed published date time
-      feedData.FeedCfg.LastFeedDateTime = lastPubDate;
+      return null;
     }
 
 #pragma warning disable 1998
     public static async Task ImportFeeds(
 #pragma warning restore 1998
-      List<FeedData> feedsData,
-      Action<int, int> progressCallback = null)
+      ICollection<FeedData> feedsData,
+      Action<int, int>      progressCallback = null)
     {
       int i          = 0;
       int totalCount = feedsData.Sum(fd => fd.NewItems.Count);
@@ -186,10 +203,8 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       progressCallback?.Invoke(i, totalCount);
 
       foreach (var feedData in feedsData)
-      foreach (var feedItem in feedData.NewItems)
-      {
+      foreach (var feedItem in feedData.NewItems.Where(fi => fi.IsSelected))
         builders.Add(
-
           new ElementBuilder(ElementType.Topic,
                              new TextContent(true, feedItem.Content))
             .WithParent(feedData.FeedCfg.RootDictElement)
@@ -199,18 +214,38 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
               r => r.WithDate(feedItem.PublishingDate.Value)
                     .WithTitle(feedItem.Title)
                     .WithAuthor(feedItem.Author)
-                    .WithComment(feedItem.Categories == null ? null : string.Join(", ", feedItem.Categories))
-                    .WithSource($"Feed: {feedData.FeedCfg.Name} ({feedData.FeedCfg.SourceUrl})")
-                    .WithLink(feedItem.Link))
+                    .WithComment(StringEx.Join(", ", feedItem.Categories))
+                    .WithSource($"Feed: {feedData.FeedCfg.Name} (<a>{feedData.FeedCfg.SourceUrl}</a>)")
+                    .WithLink(feedItem.MakeLink(feedData.FeedCfg)))
             .DoNotDisplay()
         );
-      }
-    
+
       try
       {
         Svc.SMA.Registry.Element.Add(builders.ToArray());
-        
+
         progressCallback?.Invoke(++i, totalCount);
+      
+        // Update feeds state
+
+        foreach (var feedData in feedsData)
+        {
+          var lastPubDate = feedData.FeedCfg.LastPubDate;
+
+          foreach (var feedItem in feedData.NewItems.Where(fi => fi.IsSelected))
+          {
+            // published date time
+            if (feedItem.PublishingDate.HasValue)
+              feedData.FeedCfg.LastPubDate = feedItem.PublishingDate > lastPubDate
+                ? feedItem.PublishingDate.Value
+                : lastPubDate;
+
+            // Guid
+            feedData.FeedCfg.EntriesGuid.Add(feedItem.Id);
+          }
+        }
+        
+        Svc<FeedsPlugin>.Plugin.SaveConfig();
       }
       catch (Exception ex)
       {

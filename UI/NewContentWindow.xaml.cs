@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/11 01:22
-// Modified On:  2019/04/11 20:31
+// Modified On:  2019/04/14 00:47
 // Modified By:  Alexis
 
 #endregion
@@ -31,10 +31,11 @@
 
 
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Plugins.Feeds.Tasks;
 using SuperMemoAssistant.Sys.Threading;
@@ -49,8 +50,10 @@ namespace SuperMemoAssistant.Plugins.Feeds.UI
 
     public NewContentWindow(List<FeedData> feedsData, bool lockProtection)
     {
+      FeedsData = new ObservableCollection<FeedData>(feedsData);
+
       InitializeComponent();
-      FeedsData      = feedsData;
+
       ProtectionLock = lockProtection;
     }
 
@@ -61,12 +64,10 @@ namespace SuperMemoAssistant.Plugins.Feeds.UI
 
     #region Properties & Fields - Public
 
-    public List<FeedData> FeedsData      { get; }
-    public bool           ProtectionLock { get; private set; }
-    public int            Progress       { get; private set; }
-    public string         ProgressText   { get; private set; }
-    public ICommand       ImportCommand  => new AsyncRelayCommand(ImportFeeds);
-    public ICommand       CancelCommand  => new RelayCommand(Close);
+    public ObservableCollection<FeedData> FeedsData      { get; }
+    public bool                           ProtectionLock { get; private set; }
+    public ICommand                       ImportCommand  => new AsyncRelayCommand(ImportFeeds, () => !ProtectionLock);
+    public ICommand                       CancelCommand  => new RelayCommand(Close, () => !ProtectionLock);
 
     #endregion
 
@@ -79,45 +80,29 @@ namespace SuperMemoAssistant.Plugins.Feeds.UI
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-      if (ProtectionLock)
-        return;
-
       switch (e.Key)
       {
         case Key.Enter:
-          BtnOk.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+          BtnOk.SimulateClick();
           break;
 
         case Key.Escape:
-          BtnCancel.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+          BtnCancel.SimulateClick();
           break;
       }
     }
 
     private Task ImportFeeds()
     {
-      void UpdateProgress(int i, int total)
-      {
-        Dispatcher.Invoke(
-          () =>
-          {
-            Progress     = (int)(i / (float)total * 100);
-            ProgressText = $"{Progress}% ({i}/{total})";
-
-            GetWindow(this)?.Activate();
-          }
-        );
-      }
-
-      return FeedTasks.ImportFeeds(FeedsData, UpdateProgress)
+      return FeedTasks.ImportFeeds(FeedsData)
                       .ContinueWith(t => Dispatcher.Invoke(Close));
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
       if (ProtectionLock)
-        new DelayedTask(() => ProtectionLock = false)
-          .Trigger(500);
+        new DelayedTask(() => Dispatcher.Invoke(() => ProtectionLock = false))
+          .Trigger(1000);
     }
 
     #endregion

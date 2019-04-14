@@ -43,7 +43,8 @@ namespace SuperMemoAssistant.Plugins.Feeds
 
     public static readonly List<string> ResourceDictionaries = new List<string>
     {
-      "pack://application:,,,/SuperMemoAssistant.Plugins.Feeds;component/UI/DataTemplates.xaml",
+      "pack://application:,,,/SuperMemoAssistant.Plugins.Feeds;component/UI/FeedsDataTemplate.xaml",
+      "pack://application:,,,/SuperMemoAssistant.Plugins.Feeds;component/UI/FeedFiltersDataTemplate.xaml",
     };
 
     #endregion

@@ -5,52 +5,33 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SuperMemoAssistant.Plugins.Feeds.UI"
         xmlns:models="clr-namespace:SuperMemoAssistant.Plugins.Feeds.Models"
-        xmlns:feedReader="clr-namespace:CodeHollow.FeedReader;assembly=CodeHollow.FeedReader"
-        xmlns:data="clr-namespace:SuperMemoAssistant.Sys.Windows.Data;assembly=SuperMemoAssistant.Interop"
         mc:Ignorable="d"
         Loaded="Window_Loaded"
         KeyDown="Window_KeyDown"
         Title="Feeds: New content" Height="450" Width="800"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         d:DataContext="{d:DesignInstance local:NewContentWindow}">
-  <Window.Resources>
-    <data:NegateBooleanConverter x:Key="NegateBooleanConverter" />
-  </Window.Resources>
 
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="auto" />
       <RowDefinition Height="*" />
       <RowDefinition Height="auto" />
     </Grid.RowDefinitions>
-    
-    <Grid Grid.Row="0">
-      
-      <ProgressBar Grid.Row="0"
-                   Minimum="0"
-                   Maximum="100"
-                   Value="{Binding Progress, Mode=OneWay}" />
-      
-      <TextBlock HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 Text="{Binding ProgressText, Mode=OneWay}" />
 
-    </Grid>
-
-    <TreeView Grid.Row="1"
-              Margin="0 4 0 0"
+    <TreeView Grid.Row="0"
+              Margin="0 8 0 0"
               BorderThickness="0 0 0 1"
               BorderBrush="#AAAAAA"
               ItemsSource="{Binding FeedsData}"
               Loaded="TreeView_Loaded">
       <TreeView.Resources>
         <HierarchicalDataTemplate ItemsSource="{Binding NewItems}"
-                                  DataType="models:FeedData">
+                                  DataType="{x:Type models:FeedData}">
           <TextBlock FontSize="13"
                      FontWeight="Bold"
                      Margin="1 2 0 2">
             <TextBlock.Text>
-              <MultiBinding StringFormat="\{0\} (\{1\})">
+              <MultiBinding StringFormat="{}{0} ({1})">
                 <Binding Path="FeedCfg.Name" />
                 <Binding Path="NewItems.Count" />
               </MultiBinding>
@@ -58,16 +39,23 @@
           </TextBlock>
         </HierarchicalDataTemplate>
 
-        <HierarchicalDataTemplate DataType="feedReader:FeedItem">
-          <TextBlock Text="{Binding Title}"
-                     FontSize="13"
-                     Margin="1 2 0 2" />
-        </HierarchicalDataTemplate>
+        <DataTemplate DataType="{x:Type models:FeedItemExt}">
+          <StackPanel Orientation="Horizontal"
+                      Margin="2">
+
+            <CheckBox IsChecked="{Binding IsSelected}" />
+
+            <TextBlock VerticalAlignment="Center"
+                       Text="{Binding Title}"
+                       FontSize="13"
+                       Margin="10 0 0 0" />
+          </StackPanel>
+        </DataTemplate>
       </TreeView.Resources>
     </TreeView>
 
 
-    <Grid Grid.Row="2">
+    <Grid Grid.Row="1">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="auto" />
@@ -76,18 +64,18 @@
 
       <Button Name="BtnCancel"
               Grid.Column="1"
-              IsEnabled="{Binding ProtectionLock, Converter={StaticResource NegateBooleanConverter}}"
               Height="40"
               VerticalAlignment="Center"
+              Padding="6 0 6 0"
               Margin="6 0 6 0"
               Content="Cancel"
               Command="{Binding CancelCommand}" />
 
       <Button Name="BtnOk"
               Grid.Column="2"
-              IsEnabled="{Binding ProtectionLock, Converter={StaticResource NegateBooleanConverter}}"
               Height="40"
               VerticalAlignment="Center"
+              Padding="6 0 6 0"
               Content="Ok"
               Command="{Binding ImportCommand}" />
 

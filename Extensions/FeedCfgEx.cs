@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 23:47
-// Modified On:  2019/04/14 00:46
+// Created On:   2019/04/13 21:07
+// Modified On:  2019/04/14 02:54
 // Modified By:  Alexis
 
 #endregion
@@ -30,33 +30,48 @@
 
 
 
-using System.Collections.Generic;
+using System;
 using CodeHollow.FeedReader;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
 
-namespace SuperMemoAssistant.Plugins.Feeds.Models
+namespace SuperMemoAssistant.Plugins.Feeds.Extensions
 {
-  public class FeedData
+  public static class FeedCfgEx
   {
-    #region Constructors
+    #region Methods
 
-    /// <inheritdoc />
-    public FeedData(FeedCfg feedCfg, Feed feed)
+    public static string InterpolateUrl(this FeedCfg feedCfg)
     {
-      FeedCfg = feedCfg;
-      Feed    = feed;
+      return feedCfg.SourceUrl.Interpolate(
+        ("now", DateTime.Now),
+        ("lastPubDate", feedCfg.LastPubDate),
+        ("lastRefreshDate", feedCfg.LastRefreshDate)
+      );
     }
 
-    #endregion
+    public static bool ShouldExcludeCategory(this FeedCfg feedCfg, FeedItem feedItem)
+    {
+      foreach (var catFilter in feedCfg.CategoryFilters)
+        switch (catFilter.Mode)
+        {
+          case Models.FilterMode.Exclude:
+            if (feedItem.Categories?.Contains(catFilter.Category) ?? false)
+              return true;
 
+            break;
 
+          case Models.FilterMode.Include:
+            if (feedItem.Categories?.Contains(catFilter.Category) ?? false)
+              return false;
 
+            break;
 
-    #region Properties & Fields - Public
+          default:
+            throw new NotImplementedException($"No such FilterMode {catFilter.Mode}");
+        }
 
-    public FeedCfg           FeedCfg  { get; }
-    public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
+      return false;
+    }
 
     #endregion
   }

@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 23:47
-// Modified On:  2019/04/14 00:46
+// Created On:   2019/04/13 20:51
+// Modified On:  2019/04/13 20:55
 // Modified By:  Alexis
 
 #endregion
@@ -30,33 +30,41 @@
 
 
 
-using System.Collections.Generic;
-using CodeHollow.FeedReader;
-using SuperMemoAssistant.Plugins.Feeds.Configs;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 
-namespace SuperMemoAssistant.Plugins.Feeds.Models
+namespace SuperMemoAssistant.Plugins.Feeds.Extensions
 {
-  public class FeedData
+  public static class DynamicStringEx
   {
-    #region Constructors
+    #region Constants & Statics
 
-    /// <inheritdoc />
-    public FeedData(FeedCfg feedCfg, Feed feed)
-    {
-      FeedCfg = feedCfg;
-      Feed    = feed;
-    }
+    // ReSharper disable once InconsistentNaming
+    private static readonly Regex RE_Interpolate = new Regex("{(?<exp>[^}]+)}", RegexOptions.Compiled);
 
     #endregion
 
 
 
 
-    #region Properties & Fields - Public
+    #region Methods
 
-    public FeedCfg           FeedCfg  { get; }
-    public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
+    public static string Interpolate(this string text, params (string name, object instance)[] parameters)
+    {
+      return RE_Interpolate.Replace(text, match =>
+      {
+        var expParams = parameters.Select(p => Expression.Parameter(p.instance.GetType(), p.name));
+
+        var exp = System.Linq.Dynamic.DynamicExpression.ParseLambda(
+          expParams.ToArray(),
+          null,
+          match.Groups["exp"].Value);
+        var res = exp.Compile().DynamicInvoke(parameters.Select(p => p.instance));
+
+        return res?.ToString() ?? string.Empty;
+      });
+    }
 
     #endregion
   }

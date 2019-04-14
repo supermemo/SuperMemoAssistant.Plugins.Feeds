@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 23:47
-// Modified On:  2019/04/14 00:46
+// Created On:   2019/04/14 02:23
+// Modified On:  2019/04/14 03:03
 // Modified By:  Alexis
 
 #endregion
@@ -30,33 +30,19 @@
 
 
 
-using System.Collections.Generic;
 using CodeHollow.FeedReader;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
 
-namespace SuperMemoAssistant.Plugins.Feeds.Models
+namespace SuperMemoAssistant.Plugins.Feeds.Extensions
 {
-  public class FeedData
+  public static class FeedItemEx
   {
-    #region Constructors
+    #region Methods
 
-    /// <inheritdoc />
-    public FeedData(FeedCfg feedCfg, Feed feed)
+    public static string MakeLink(this FeedItem feedItem, FeedCfg feedCfg)
     {
-      FeedCfg = feedCfg;
-      Feed    = feed;
+      return feedItem.Link + (feedCfg.LinkParameter ?? string.Empty);
     }
-
-    #endregion
-
-
-
-
-    #region Properties & Fields - Public
-
-    public FeedCfg           FeedCfg  { get; }
-    public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
 
     #endregion
   }

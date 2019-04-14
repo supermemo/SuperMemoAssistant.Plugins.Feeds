@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:58
-// Modified On:  2019/04/11 19:20
+// Modified On:  2019/04/14 02:46
 // Modified By:  Alexis
 
 #endregion
@@ -31,10 +31,14 @@
 
 
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using Forge.Forms.Annotations;
 using Newtonsoft.Json;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Types;
+using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Services;
 using SuperMemoAssistant.Services.UI.Configuration.ElementPicker;
 using SuperMemoAssistant.Sys.ComponentModel;
@@ -54,7 +58,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
 
     public FeedCfg()
     {
-      LastFeedDateTime = DateTime.MinValue;
+      LastPubDate = DateTime.MinValue;
     }
 
     #endregion
@@ -71,10 +75,15 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     [Value(Must.NotBeEmpty)]
     public string SourceUrl { get; set; }
 
-    [Field(Name = "Content link regex")]
-    public string Regex { get; set; }
+    [Field(Name = "Use feed guid ?")]
+    public bool UseGuid { get; set; } = true;
+    [Field(Name = "Use feed published date ?")]
+    public bool UsePubDate { get; set; } = false;
+
     [Field(Name = "Content link cookie")]
     public string Cookie { get; set; }
+    [Field(Name = "Content link parameter")]
+    public string LinkParameter { get; set; }
 
     [Field(Name = "Priority (%)")]
     [Value(Must.BeGreaterThanOrEqualTo,
@@ -103,16 +112,42 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
         : RootDictElement.ToString();
     }
 
+    [JsonIgnore]
+    [Field(Name = "Excluded/Included categories (default = exclude)")]
+    [MultiLine]
+    public string CategoryFiltersString
+    {
+      get => string.Join("\n", CategoryFilters);
+      set => CategoryFilters = value.Replace("\r\n", "\n")
+                                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(c => new CategoryFilter(c))
+                                    .ToHashSet();
+    }
+
+    [Field(Name = "Content link regex")]
+    [DirectContent]
+    public FeedFilterRootViewModel FiltersRoot { get; set; } = new FeedFilterRootViewModel();
+
+
     //
     // Config only
 
     public int RootDictElementId { get; set; }
 
-    public DateTime LastFeedDateTime { get; set; }
+    public HashSet<CategoryFilter> CategoryFilters { get; set; }
+
+    public HashSet<string> EntriesGuid { get; set; } = new HashSet<string>();
+
+    public DateTime LastPubDate { get; set; }
+
+    public DateTime LastRefreshDate { get; set; }
 
 
     //
     // Helpers
+
+    [JsonIgnore]
+    public ObservableCollection<FeedFilter> Filters => FiltersRoot.Children;
 
     [JsonIgnore]
     public IElement RootDictElement => Svc.SMA.Registry.Element[RootDictElementId <= 0 ? 1 : RootDictElementId];
@@ -125,6 +160,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     #region Properties Impl - Public
 
     /// <inheritdoc />
+    [JsonIgnore]
     public bool IsChanged { get; set; }
 
     #endregion
@@ -142,7 +178,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     }
 
     #endregion
-
+    
 
 
 

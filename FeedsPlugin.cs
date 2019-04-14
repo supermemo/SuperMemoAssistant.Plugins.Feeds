@@ -33,6 +33,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using Anotar.Serilog;
 using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Interop.SuperMemo.Core;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
@@ -149,14 +150,24 @@ namespace SuperMemoAssistant.Plugins.Feeds
     {
       var feedsData = await FeedTasks.DownloadFeeds(FeedsConfig);
 
-      await FeedTasks.DownloadFeedsContents(feedsData);
-
       if (feedsData.Count == 0 || feedsData.All(fd => fd.NewItems.Count == 0))
+      {
+        LogTo.Debug("No new entries downloaded.");
         return;
+      }
 
       Application.Current.Dispatcher.Invoke(
-        () => new NewContentWindow(feedsData, lockProtection).ShowAndActivate()
+        () =>
+        {
+          LogTo.Debug("Creating NewContentWindow");
+          new NewContentWindow(feedsData, lockProtection).ShowAndActivate();
+        }
       );
+    }
+
+    public void SaveConfig()
+    {
+      SaveConfig(FeedsConfig);
     }
 
     private void SaveConfig(INotifyPropertyChangedEx config)

@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 23:47
-// Modified On:  2019/04/14 00:46
+// Created On:   2019/04/14 00:41
+// Modified On:  2019/04/14 00:42
 // Modified By:  Alexis
 
 #endregion
@@ -30,22 +30,35 @@
 
 
 
-using System.Collections.Generic;
 using CodeHollow.FeedReader;
-using SuperMemoAssistant.Plugins.Feeds.Configs;
+using CodeHollow.FeedReader.Feeds;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Models
 {
-  public class FeedData
+  public class FeedItemExt : FeedItem
   {
     #region Constructors
 
     /// <inheritdoc />
-    public FeedData(FeedCfg feedCfg, Feed feed)
+    public FeedItemExt() { }
+
+    /// <inheritdoc />
+    public FeedItemExt(FeedItem feedItem)
     {
-      FeedCfg = feedCfg;
-      Feed    = feed;
+      Author = feedItem.Author;
+      Categories = feedItem.Categories;
+      Content = feedItem.Content;
+      Description = feedItem.Description;
+      Id = feedItem.Id;
+      Link = feedItem.Link;
+      PublishingDate = feedItem.PublishingDate;
+      PublishingDateString = feedItem.PublishingDateString;
+      SpecificItem = feedItem.SpecificItem;
+      Title = feedItem.Title;
     }
+
+    /// <inheritdoc />
+    public FeedItemExt(BaseFeedItem feedItem) : base(feedItem) { }
 
     #endregion
 
@@ -54,9 +67,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
 
     #region Properties & Fields - Public
 
-    public FeedCfg           FeedCfg  { get; }
-    public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
+    public bool IsSelected { get; set; } = true;
 
     #endregion
   }

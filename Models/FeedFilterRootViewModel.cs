@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 23:47
-// Modified On:  2019/04/14 00:46
+// Created On:   2019/04/13 18:48
+// Modified On:  2019/04/13 19:05
 // Modified By:  Alexis
 
 #endregion
@@ -30,21 +30,27 @@
 
 
 
-using System.Collections.Generic;
-using CodeHollow.FeedReader;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using Forge.Forms;
+using Newtonsoft.Json;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
+using SuperMemoAssistant.Sys.Windows.Input;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Models
 {
-  public class FeedData
+  public class FeedFilterRootViewModel
   {
     #region Constructors
 
     /// <inheritdoc />
-    public FeedData(FeedCfg feedCfg, Feed feed)
+    public FeedFilterRootViewModel()
     {
-      FeedCfg = feedCfg;
-      Feed    = feed;
+      Root = new ObservableCollection<FeedFilterRootViewModel>
+      {
+        this
+      };
     }
 
     #endregion
@@ -54,9 +60,42 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
 
     #region Properties & Fields - Public
 
-    public FeedCfg           FeedCfg  { get; }
-    public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
+    public ObservableCollection<FeedFilter> Children { get; set; } = new ObservableCollection<FeedFilter>();
+
+    [JsonIgnore]
+    public ObservableCollection<FeedFilterRootViewModel> Root { get; set; }
+
+    [JsonIgnore]
+    public ICommand NewCommand => new AsyncRelayCommand(NewFilter);
+
+    [JsonIgnore]
+    public ICommand DeleteCommand => new AsyncRelayCommand<FeedFilter>(DeleteFilter);
+
+    #endregion
+
+
+
+
+    #region Methods
+
+    private async Task NewFilter()
+    {
+      var filter = new FeedFilter();
+      var res    = await Show.Window().For<FeedFilter>(filter);
+
+      if (res.Model == null || string.IsNullOrWhiteSpace(filter.Filter))
+        return;
+
+      Children.Add(filter);
+    }
+
+    private async Task DeleteFilter(FeedFilter filter)
+    {
+      var res = await Show.Window().For(new Confirmation("Are you sure ?"));
+
+      if (res.Model.Confirmed)
+        Children.Remove(filter);
+    }
 
     #endregion
   }
