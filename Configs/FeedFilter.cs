@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/13 16:28
-// Modified On:  2019/04/13 19:05
+// Modified On:  2019/04/17 14:04
 // Modified By:  Alexis
 
 #endregion
@@ -30,12 +30,14 @@
 
 
 
-using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Forge.Forms;
 using Forge.Forms.Annotations;
+using Forge.Forms.Validation;
 using Newtonsoft.Json;
+using SuperMemoAssistant.Plugins.Feeds.Extensions;
 using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Sys.Windows.Input;
 
@@ -51,8 +53,17 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     "Save",
     IsDefault = true,
     Validates = true)]
-  public class FeedFilter
+  public class FeedFilter : FeedFilterBase, INotifyPropertyChanged
   {
+    #region Properties & Fields - Non-Public
+
+    private string _filterError = null;
+
+    #endregion
+
+
+
+
     #region Constructors
 
     /// <inheritdoc />
@@ -72,16 +83,14 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
 
     [Field(Name = "Filter")]
     [Value(Must.NotBeEmpty)]
+    [Value(Must.SatisfyMethod, nameof(Validate), Message = "{Binding FilterError}")]
     public string Filter { get; set; }
 
-    public ObservableCollection<FeedFilter> Children { get; set; } = new ObservableCollection<FeedFilter>();
-
-    [JsonIgnore]
-    public ICommand NewCommand => new AsyncRelayCommand(NewFilter);
-    [JsonIgnore]
-    public ICommand DeleteCommand => new AsyncRelayCommand<FeedFilter>(DeleteFilter);
     [JsonIgnore]
     public ICommand EditCommand => new AsyncRelayCommand(EditFilter);
+
+    [JsonIgnore]
+    public string FilterError => _filterError ?? "Unknown error";
 
     #endregion
 
@@ -90,29 +99,35 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
 
     #region Methods
 
-    private async Task NewFilter()
+    public static bool Validate(ValidationContext validationContext)
     {
-      var filter = new FeedFilter();
-      var res    = await Show.Window().For<FeedFilter>(filter);
+      var feedFilter = (FeedFilter)validationContext.Model;
 
-      if (res.Model == null || string.IsNullOrWhiteSpace(filter.Filter))
-        return;
+      switch (validationContext.PropertyName)
+      {
+        case nameof(Filter):
+          var ret = feedFilter.ValidateFilter(out feedFilter._filterError);
+          feedFilter.PropertyChanged?.Invoke(feedFilter, new PropertyChangedEventArgs(nameof(FilterError)));
 
-      Children.Add(filter);
-    }
+          return ret;
+      }
 
-    private async Task DeleteFilter(FeedFilter filter)
-    {
-      var res = await Show.Window().For(new Confirmation("Are you sure ?"));
-
-      if (res.Model.Confirmed)
-        Children.Remove(filter);
+      return false;
     }
 
     private Task EditFilter()
     {
       return Show.Window().For<FeedFilter>(this);
     }
+
+    #endregion
+
+
+
+
+    #region Events
+
+    public event PropertyChangedEventHandler PropertyChanged;
 
     #endregion
   }

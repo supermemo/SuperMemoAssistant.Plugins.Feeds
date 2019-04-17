@@ -48,6 +48,9 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
   [Form(Mode = DefaultFields.None)]
   [Title("Feed Settings",
     IsVisible = "{Env DialogHostContext}")]
+  [DialogAction("cancel",
+    "Cancel",
+    IsCancel = true)]
   [DialogAction("save",
     "Save",
     IsDefault = true,

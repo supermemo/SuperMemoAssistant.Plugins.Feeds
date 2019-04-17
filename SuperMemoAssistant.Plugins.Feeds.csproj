@@ -141,6 +141,7 @@
   <ItemGroup>
     <Compile Include="Configs\CategoryFilter.cs" />
     <Compile Include="Configs\FeedFilter.cs" />
+    <Compile Include="Models\FeedFilterBase.cs" />
     <Compile Include="Models\FilterMode.cs" />
     <Compile Include="Extensions\FeedCfgEx.cs" />
     <Compile Include="Extensions\FeedItemEx.cs" />

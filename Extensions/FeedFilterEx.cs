@@ -34,6 +34,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Xml.XPath;
+using Anotar.Serilog;
 using HtmlAgilityPack;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
 using SuperMemoAssistant.Plugins.Feeds.Models;
@@ -71,19 +73,27 @@ namespace SuperMemoAssistant.Plugins.Feeds.Extensions
           break;
 
         case FeedFilterType.XPath:
-          HtmlDocument htmlDoc = new HtmlDocument();
-          htmlDoc.LoadHtml(content);
+          try
+          {
+            HtmlDocument htmlDoc = new HtmlDocument();
+            htmlDoc.LoadHtml(content);
 
-          filteredContents = htmlDoc.DocumentNode
-                                    .SelectNodes(filter.Filter)
-                                    ?.Select(n => n.OuterHtml)
-                                    .ToList();
+            filteredContents = htmlDoc.DocumentNode
+                                      .SelectNodes(filter.Filter)
+                                      ?.Select(n => n.OuterHtml)
+                                      .ToList();
 
-          // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-          if (filteredContents == null || filteredContents.Any() == false)
-            return null;
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            if (filteredContents == null || filteredContents.Any() == false)
+              return null;
 
-          content = string.Join("\r\n", filteredContents);
+            content = string.Join("\r\n", filteredContents);
+          }
+          catch (Exception ex)
+          {
+            LogTo.Error(ex, $"Invalid XPath filter '{filter.Filter}'");
+            throw;
+          }
           break;
 
         default:
@@ -101,6 +111,46 @@ namespace SuperMemoAssistant.Plugins.Feeds.Extensions
       }
 
       return content;
+    }
+
+    public static bool ValidateFilter(this FeedFilter filter, out string error)
+    {
+      error = null;
+
+      switch (filter.Type)
+      {
+        case FeedFilterType.Regex:
+          try
+          {
+            // ReSharper disable once ObjectCreationAsStatement
+            new Regex(filter.Filter);
+
+            return true;
+          }
+          catch (Exception ex)
+          {
+            error = ex.Message;
+          }
+          
+          return false;
+
+        case FeedFilterType.XPath:
+          try
+          {
+            XPathExpression.Compile(filter.Filter);
+
+            return true;
+          }
+          catch (Exception ex)
+          {
+            error = ex.Message;
+          }
+          
+          return false;
+
+        default:
+          throw new NotImplementedException("Invalid filter type");
+      }
     }
 
     #endregion

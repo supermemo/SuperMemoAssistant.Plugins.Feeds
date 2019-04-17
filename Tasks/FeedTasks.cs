@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:43
-// Modified On:  2019/04/17 00:37
+// Modified On:  2019/04/17 14:31
 // Modified By:  Alexis
 
 #endregion
@@ -35,6 +35,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Anotar.Serilog;
 using CodeHollow.FeedReader;
@@ -92,21 +93,45 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 
     private static async Task<FeedData> DownloadFeedContents(FeedData feedData)
     {
-      var feedItemTasks = feedData.Feed.Items.Select(feedItem => DownloadFeedContent(feedData.FeedCfg, feedItem));
-      var feedItems     = await Task.WhenAll(feedItemTasks);
+      var feedCfg   = feedData.FeedCfg;
+      var throttler = new SemaphoreSlim(6);
+      var client    = new HttpClient(new HttpClientHandler { UseCookies = false });
 
-      feedData.NewItems.AddRange(feedItems.Where(fi => fi != null));
+      client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
 
-      if (feedData.NewItems.Any() == false)
-        return null;
+      if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
+        client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
 
-      return feedData;
+      try
+      {
+        var feedItemTasks = feedData.Feed.Items.Select(
+          feedItem => DownloadFeedContent(feedCfg,
+                                          feedItem,
+                                          throttler,
+                                          // ReSharper disable once AccessToDisposedClosure
+                                          client)
+        );
+        var feedItems = await Task.WhenAll(feedItemTasks);
+
+        feedData.NewItems.AddRange(feedItems.Where(fi => fi != null));
+
+        return feedData.NewItems.Any() == false ? null : feedData;
+      }
+      finally
+      {
+        client.Dispose();
+      }
     }
 
-    private static async Task<FeedItemExt> DownloadFeedContent(FeedCfg feedCfg, FeedItem feedItem)
+    private static async Task<FeedItemExt> DownloadFeedContent(FeedCfg       feedCfg,
+                                                               FeedItem      feedItem,
+                                                               SemaphoreSlim throttler,
+                                                               HttpClient    client)
     {
       try
       {
+        await throttler.WaitAsync();
+
         //
         // Check & update publishing dates
 
@@ -140,32 +165,28 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
         // Download content or use inline content
 
         if (feedItem.Link != null)
-          using (var client = new HttpClient(new HttpClientHandler { UseCookies = false }))
+        {
+          var httpReq = new HttpRequestMessage(HttpMethod.Get,
+                                               feedItem.MakeLink(feedCfg));
+          var httpResp = await client.SendAsync(httpReq);
+
+          if (httpResp != null && httpResp.IsSuccessStatusCode)
           {
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
-
-            if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
-              client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
-
-            var httpReq = new HttpRequestMessage(HttpMethod.Get,
-                                                 feedItem.MakeLink(feedCfg));
-            var httpResp = await client.SendAsync(httpReq);
-
-            if (httpResp != null && httpResp.IsSuccessStatusCode)
-            {
-              feedItem.Content = await httpResp.Content.ReadAsStringAsync();
-            }
-
-            else
-            {
-              feedItem.Content = null;
-              LogTo.Warning(
-                $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
-            }
+            feedItem.Content = await httpResp.Content.ReadAsStringAsync();
           }
 
+          else
+          {
+            feedItem.Content = null;
+            LogTo.Warning(
+              $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
+          }
+        }
+
         else
+        {
           feedItem.Content = feedItem.Content ?? feedItem.Description;
+        }
 
         if (string.IsNullOrWhiteSpace(feedItem.Content))
           return null;
@@ -191,32 +212,43 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       {
         LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}'");
       }
+      finally
+      {
+        throttler.Release();
+      }
 
       return null;
     }
 
     private static string FixRelativeLinks(string html, Uri baseUri)
     {
-      StringWriter writer = new StringWriter();
-      HtmlDocument doc    = new HtmlDocument();
+      var writer = new StringWriter();
+      var doc    = new HtmlDocument();
 
-      var baseUrl = baseUri.Host;
       doc.LoadHtml(html);
 
       foreach (var img in doc.DocumentNode.Descendants("img"))
       {
+        if (string.IsNullOrWhiteSpace(img.Attributes["src"].Value)
+          || IsAbsoluteUrl(img.Attributes["src"].Value))
+          continue;
+
         var uri = new Uri(
           baseUri,
-          img.Attributes["src"].Value.TrimStart("http://").TrimStart(baseUrl)
+          img.Attributes["src"].Value
         );
         img.Attributes["src"].Value = uri.AbsoluteUri;
       }
 
       foreach (var a in doc.DocumentNode.Descendants("a"))
       {
+        if (string.IsNullOrWhiteSpace(a.Attributes["href"].Value)
+          || IsAbsoluteUrl(a.Attributes["href"].Value))
+          continue;
+
         var uri = new Uri(
           baseUri,
-          a.Attributes["href"].Value.TrimStart("http://").TrimStart(baseUrl)
+          a.Attributes["href"].Value
         );
         a.Attributes["href"].Value = uri.AbsoluteUri;
       }
@@ -224,6 +256,11 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       doc.Save(writer);
 
       return writer.ToString();
+    }
+
+    private static bool IsAbsoluteUrl(string url)
+    {
+      return Uri.TryCreate(url, UriKind.Absolute, out _);
     }
 
 #pragma warning disable 1998

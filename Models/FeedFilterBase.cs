@@ -21,8 +21,8 @@
 // DEALINGS IN THE SOFTWARE.
 // 
 // 
-// Created On:   2019/04/10 18:06
-// Modified On:  2019/04/10 22:08
+// Created On:   2019/04/17 13:41
+// Modified On:  2019/04/17 13:43
 // Modified By:  Alexis
 
 #endregion
@@ -30,39 +30,27 @@
 
 
 
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Forge.Forms;
+using Newtonsoft.Json;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
 using SuperMemoAssistant.Sys.Windows.Input;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Models
 {
-  public class FeedList : ObservableCollection<FeedCfg>
+  public abstract class FeedFilterBase
   {
-    #region Constructors
-
-    /// <inheritdoc />
-    public FeedList() { }
-
-    /// <inheritdoc />
-    public FeedList(List<FeedCfg> list) : base(list) { }
-
-    /// <inheritdoc />
-    public FeedList(IEnumerable<FeedCfg> collection) : base(collection) { }
-
-    #endregion
-
-
-
-
     #region Properties & Fields - Public
 
-    public ICommand NewCommand    => new AsyncRelayCommand(NewFeed);
-    public ICommand DeleteCommand => new RelayCommand<FeedCfg>(DeleteFeed);
-    public ICommand EditCommand   => new AsyncRelayCommand<FeedCfg>(EditFeed);
+    public ObservableCollection<FeedFilter> Children { get; set; } = new ObservableCollection<FeedFilter>();
+
+    [JsonIgnore]
+    public ICommand NewCommand => new AsyncRelayCommand(NewFilter);
+
+    [JsonIgnore]
+    public ICommand DeleteCommand => new AsyncRelayCommand<FeedFilter>(DeleteFilter);
 
     #endregion
 
@@ -71,26 +59,23 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
 
     #region Methods
 
-    private async Task NewFeed()
+    private async Task NewFilter()
     {
-      var feed = new FeedCfg();
-      var res  = await Show.Window().For<FeedCfg>(feed);
-      
+      var filter = new FeedFilter();
+      var res    = await Show.Window().For<FeedFilter>(filter);
+
       if (res.Action is "cancel")
         return;
 
-      Add(feed);
+      Children.Add(filter);
     }
 
-    private void DeleteFeed(FeedCfg feed)
+    private async Task DeleteFilter(FeedFilter filter)
     {
-      if (Forge.Forms.Show.Window().For(new Confirmation("Are you sure ?")).Result.Model.Confirmed)
-        Remove(feed);
-    }
+      var res = await Show.Window().For(new Confirmation("Are you sure ?"));
 
-    private Task EditFeed(FeedCfg feed)
-    {
-      return Forge.Forms.Show.Window().For<FeedCfg>(feed);
+      if (res.Model.Confirmed)
+        Children.Remove(filter);
     }
 
     #endregion
