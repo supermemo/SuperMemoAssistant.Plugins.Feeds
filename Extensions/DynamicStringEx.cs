@@ -60,7 +60,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Extensions
           expParams.ToArray(),
           null,
           match.Groups["exp"].Value);
-        var res = exp.Compile().DynamicInvoke(parameters.Select(p => p.instance));
+        var res = exp.Compile().DynamicInvoke(parameters.Select(p => p.instance).ToArray());
 
         return res?.ToString() ?? string.Empty;
       });

@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:58
-// Modified On:  2019/04/14 02:46
+// Modified On:  2019/04/16 17:33
 // Modified By:  Alexis
 
 #endregion
@@ -134,7 +134,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
 
     public int RootDictElementId { get; set; }
 
-    public HashSet<CategoryFilter> CategoryFilters { get; set; }
+    public HashSet<CategoryFilter> CategoryFilters { get; set; } = new HashSet<CategoryFilter>();
 
     public HashSet<string> EntriesGuid { get; set; } = new HashSet<string>();
 
@@ -151,6 +151,9 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
 
     [JsonIgnore]
     public IElement RootDictElement => Svc.SMA.Registry.Element[RootDictElementId <= 0 ? 1 : RootDictElementId];
+
+    [JsonIgnore]
+    public DateTime PendingRefreshDate { get; set; }
 
     #endregion
 
@@ -178,7 +181,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     }
 
     #endregion
-    
+
 
 
 

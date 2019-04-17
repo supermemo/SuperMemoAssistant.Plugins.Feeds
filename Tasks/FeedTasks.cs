@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:43
-// Modified On:  2019/04/13 23:03
+// Modified On:  2019/04/17 00:37
 // Modified By:  Alexis
 
 #endregion
@@ -32,11 +32,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Anotar.Serilog;
 using CodeHollow.FeedReader;
+using Forge.Forms;
+using HtmlAgilityPack;
 using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Interop.SuperMemo.Content.Contents;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Builders;
@@ -58,7 +61,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       var res = await Task.WhenAll(feedsCfg.Feeds.Select(DownloadFeed));
 
       var feedsData = res.Where(fd => fd != null).ToList();
-      
+
       LogTo.Debug($"Downloaded {feedsData.Sum(fd => fd.NewItems.Count)} items");
 
       return feedsData;
@@ -74,7 +77,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
         if (feed?.Items == null || feed.Items.Count <= 0)
           return null;
 
-        feedCfg.LastRefreshDate = lastRefresh;
+        feedCfg.PendingRefreshDate = lastRefresh;
         var feedData = new FeedData(feedCfg, feed);
 
         return await DownloadFeedContents(feedData);
@@ -90,7 +93,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
     private static async Task<FeedData> DownloadFeedContents(FeedData feedData)
     {
       var feedItemTasks = feedData.Feed.Items.Select(feedItem => DownloadFeedContent(feedData.FeedCfg, feedItem));
-      var feedItems = await Task.WhenAll(feedItemTasks);
+      var feedItems     = await Task.WhenAll(feedItemTasks);
 
       feedData.NewItems.AddRange(feedItems.Where(fi => fi != null));
 
@@ -102,91 +105,125 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 
     private static async Task<FeedItemExt> DownloadFeedContent(FeedCfg feedCfg, FeedItem feedItem)
     {
-        try
+      try
+      {
+        //
+        // Check & update publishing dates
+
+        if (feedCfg.UsePubDate)
         {
-          //
-          // Check & update publishing dates
-
-          if (feedCfg.UsePubDate)
+          if (feedItem.PublishingDate == null)
           {
-            if (feedItem.PublishingDate == null)
-            {
-              LogTo.Warning(
-                $"Date missing, or unknown format for feed {feedCfg.Name}, item title '{feedItem.Title}', raw date '{feedItem.PublishingDateString}'");
-              return null;
-            }
-
-            if (feedItem.PublishingDate <= feedCfg.LastPubDate)
-              return null;
+            LogTo.Warning(
+              $"Date missing, or unknown format for feed {feedCfg.Name}, item title '{feedItem.Title}', raw date '{feedItem.PublishingDateString}'");
+            return null;
           }
 
-          //
-          // Check guid
+          if (feedItem.PublishingDate <= feedCfg.LastPubDate)
+            return null;
+        }
 
-          if (feedCfg.UseGuid)
-            if (feedCfg.EntriesGuid.Contains(feedItem.Id))
-              return null;
+        //
+        // Check guid
 
-          //
-          // Check categories
-
-          if (feedCfg.ShouldExcludeCategory(feedItem))
+        if (feedCfg.UseGuid)
+          if (feedCfg.EntriesGuid.Contains(feedItem.Id))
             return null;
 
-          //
-          // Download content or use inline content
+        //
+        // Check categories
 
-          if (feedItem.Link != null)
-            using (var client = new HttpClient(new HttpClientHandler { UseCookies = false }))
+        if (feedCfg.ShouldExcludeCategory(feedItem))
+          return null;
+
+        //
+        // Download content or use inline content
+
+        if (feedItem.Link != null)
+          using (var client = new HttpClient(new HttpClientHandler { UseCookies = false }))
+          {
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+
+            if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
+              client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
+
+            var httpReq = new HttpRequestMessage(HttpMethod.Get,
+                                                 feedItem.MakeLink(feedCfg));
+            var httpResp = await client.SendAsync(httpReq);
+
+            if (httpResp != null && httpResp.IsSuccessStatusCode)
             {
-              client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
-
-              if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
-                client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
-
-              var httpReq = new HttpRequestMessage(HttpMethod.Get,
-                                                   feedItem.MakeLink(feedCfg));
-              var httpResp = await client.SendAsync(httpReq);
-
-              if (httpResp != null && httpResp.IsSuccessStatusCode)
-              {
-                feedItem.Content = await httpResp.Content.ReadAsStringAsync();
-              }
-
-              else
-              {
-                feedItem.Content = null;
-                LogTo.Warning(
-                  $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
-              }
+              feedItem.Content = await httpResp.Content.ReadAsStringAsync();
             }
 
-          else
-            feedItem.Content = feedItem.Content ?? feedItem.Description;
+            else
+            {
+              feedItem.Content = null;
+              LogTo.Warning(
+                $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
+            }
+          }
 
-          if (string.IsNullOrWhiteSpace(feedItem.Content))
-            return null;
+        else
+          feedItem.Content = feedItem.Content ?? feedItem.Description;
 
-          //
-          // Process content if necessary & push back
+        if (string.IsNullOrWhiteSpace(feedItem.Content))
+          return null;
 
-          if (feedCfg.Filters.Any())
-            feedItem.Content = string.Join(
-              "\r\n",
-              feedCfg.Filters
-                      .Select(f => f.Filter(feedItem.Content))
-                      .Where(s => string.IsNullOrWhiteSpace(s) == false)
-            );
+        //
+        // Process content if necessary & push back
 
-          // Add feed item
-          return new FeedItemExt(feedItem);
-        }
-        catch (Exception ex)
-        {
-          LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}'");
-        }
+        if (feedCfg.Filters.Any())
+          feedItem.Content = string.Join(
+            "\r\n",
+            feedCfg.Filters
+                   .Select(f => f.Filter(feedItem.Content))
+                   .Where(s => string.IsNullOrWhiteSpace(s) == false)
+          );
+
+        if (feedItem.Link != null)
+          feedItem.Content = FixRelativeLinks(feedItem.Content, new Uri(feedItem.MakeLink(feedCfg)));
+
+        // Add feed item
+        return new FeedItemExt(feedItem);
+      }
+      catch (Exception ex)
+      {
+        LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}'");
+      }
 
       return null;
+    }
+
+    private static string FixRelativeLinks(string html, Uri baseUri)
+    {
+      StringWriter writer = new StringWriter();
+      HtmlDocument doc    = new HtmlDocument();
+
+      var baseUrl = baseUri.Host;
+      doc.LoadHtml(html);
+
+      foreach (var img in doc.DocumentNode.Descendants("img"))
+      {
+        var uri = new Uri(
+          baseUri,
+          img.Attributes["src"].Value.TrimStart("http://").TrimStart(baseUrl)
+        );
+        img.Attributes["src"].Value = uri.AbsoluteUri;
+      }
+
+      foreach (var a in doc.DocumentNode.Descendants("a"))
+      {
+        var uri = new Uri(
+          baseUri,
+          a.Attributes["href"].Value.TrimStart("http://").TrimStart(baseUrl)
+        );
+        a.Attributes["href"].Value = uri.AbsoluteUri;
+      }
+
+      doc.Save(writer);
+
+      return writer.ToString();
     }
 
 #pragma warning disable 1998
@@ -195,37 +232,49 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       ICollection<FeedData> feedsData,
       Action<int, int>      progressCallback = null)
     {
-      int i          = 0;
-      int totalCount = feedsData.Sum(fd => fd.NewItems.Count);
-
-      List<ElementBuilder> builders = new List<ElementBuilder>();
-
-      progressCallback?.Invoke(i, totalCount);
-
-      foreach (var feedData in feedsData)
-      foreach (var feedItem in feedData.NewItems.Where(fi => fi.IsSelected))
-        builders.Add(
-          new ElementBuilder(ElementType.Topic,
-                             new TextContent(true, feedItem.Content))
-            .WithParent(feedData.FeedCfg.RootDictElement)
-            .WithPriority(feedData.FeedCfg.Priority)
-            .WithReference(
-              // ReSharper disable once PossibleInvalidOperationException
-              r => r.WithDate(feedItem.PublishingDate.Value)
-                    .WithTitle(feedItem.Title)
-                    .WithAuthor(feedItem.Author)
-                    .WithComment(StringEx.Join(", ", feedItem.Categories))
-                    .WithSource($"Feed: {feedData.FeedCfg.Name} (<a>{feedData.FeedCfg.SourceUrl}</a>)")
-                    .WithLink(feedItem.MakeLink(feedData.FeedCfg)))
-            .DoNotDisplay()
-        );
-
       try
       {
-        Svc.SMA.Registry.Element.Add(builders.ToArray());
+        int i          = 0;
+        int totalCount = feedsData.Sum(fd => fd.NewItems.Count);
+
+        var builders = new List<ElementBuilder>();
+
+        progressCallback?.Invoke(i, totalCount);
+
+        foreach (var feedData in feedsData)
+        foreach (var feedItem in feedData.NewItems.Where(fi => fi.IsSelected))
+          builders.Add(
+            new ElementBuilder(ElementType.Topic,
+                               new TextContent(true, feedItem.Content))
+              .WithParent(feedData.FeedCfg.RootDictElement)
+              .WithPriority(feedData.FeedCfg.Priority)
+              .WithReference(
+                // ReSharper disable once PossibleInvalidOperationException
+                r => r.WithDate(feedItem.PublishingDate?.ToString())
+                      .WithTitle(feedItem.Title)
+                      .WithAuthor(feedItem.Author)
+                      .WithComment(StringEx.Join(", ", feedItem.Categories))
+                      .WithSource($"Feed: {feedData.FeedCfg.Name} (<a>{feedData.FeedCfg.SourceUrl}</a>)")
+                      .WithLink(feedItem.MakeLink(feedData.FeedCfg)))
+              .DoNotDisplay()
+          );
+
+        var res = Svc.SMA.Registry.Element.Add(
+          out var results,
+          ElemCreationFlags.CreateSubfolders,
+          builders.ToArray()
+        );
+
+        if (res == false)
+        {
+          var msg = results.GetErrorString();
+          Show.Window().For(new Alert(msg, "Feeds: Error")).RunAsync();
+
+          return;
+        }
 
         progressCallback?.Invoke(++i, totalCount);
-      
+
         // Update feeds state
 
         foreach (var feedData in feedsData)
@@ -243,8 +292,10 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
             // Guid
             feedData.FeedCfg.EntriesGuid.Add(feedItem.Id);
           }
+
+          feedData.FeedCfg.LastRefreshDate = feedData.FeedCfg.PendingRefreshDate;
         }
-        
+
         Svc<FeedsPlugin>.Plugin.SaveConfig();
       }
       catch (Exception ex)

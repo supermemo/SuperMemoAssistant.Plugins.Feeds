@@ -76,10 +76,11 @@ namespace SuperMemoAssistant.Plugins.Feeds.Extensions
 
           filteredContents = htmlDoc.DocumentNode
                                     .SelectNodes(filter.Filter)
-                                    .Select(n => n.OuterHtml)
+                                    ?.Select(n => n.OuterHtml)
                                     .ToList();
 
-          if (filteredContents.Any() == false)
+          // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+          if (filteredContents == null || filteredContents.Any() == false)
             return null;
 
           content = string.Join("\r\n", filteredContents);

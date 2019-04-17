@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 17:23
-// Modified On:  2019/04/11 18:46
+// Modified On:  2019/04/15 19:52
 // Modified By:  Alexis
 
 #endregion
@@ -89,15 +89,13 @@ namespace SuperMemoAssistant.Plugins.Feeds
     {
       GlobalConfig = Svc.Configuration.Load<FeedsGlobalCfg>().Result ?? new FeedsGlobalCfg();
 
-      var feedsCfg = GlobalConfig.CollectionsFeeds.SafeGet(Svc.SMA.Collection.GetKnoFilePath());
+      FeedsConfig = GlobalConfig.CollectionsFeeds.SafeGet(Svc.SMA.Collection.GetKnoFilePath());
 
-      if (feedsCfg == null)
+      if (FeedsConfig == null)
       {
-        feedsCfg                                               = new FeedsCfg();
-        GlobalConfig.CollectionsFeeds[Svc.SMA.Collection.Path] = feedsCfg;
+        FeedsConfig = new FeedsCfg();
+        GlobalConfig.CollectionsFeeds[Svc.SMA.Collection.GetKnoFilePath()] = FeedsConfig;
       }
-
-      FeedsConfig = feedsCfg;
 
       Svc.SMA.UI.ElementWindow.OnAvailable += new ActionProxy(ElementWindow_OnAvailable);
 
