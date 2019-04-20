@@ -79,9 +79,16 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
           return null;
 
         feedCfg.PendingRefreshDate = lastRefresh;
-        var feedData = new FeedData(feedCfg, feed);
+        var feedData = await DownloadFeedContents(new FeedData(feedCfg, feed));
 
-        return await DownloadFeedContents(feedData);
+        if (feedData == null)
+          return null;
+
+        feedData.NewItems = feedData.NewItems
+                                    .OrderByDescending(fi => fi.PublishingDate ?? DateTime.MinValue)
+                                    .ToList();
+
+        return feedData;
       }
       catch (Exception ex)
       {
@@ -96,8 +103,12 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       var feedCfg   = feedData.FeedCfg;
       var throttler = new SemaphoreSlim(6);
       var client    = new HttpClient(new HttpClientHandler { UseCookies = false });
-
+      
       client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+      client.DefaultRequestHeaders.Add("Accept-Language", "en-GB,en;q=0.5");
+      client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
+      client.DefaultRequestHeaders.Add("Accept", "text/html;q=0.9,*/*;q=0.8");
+      //client.DefaultRequestHeaders.Add("Connection", "close");
 
       if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
         client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
@@ -229,7 +240,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 
       foreach (var img in doc.DocumentNode.Descendants("img"))
       {
-        if (string.IsNullOrWhiteSpace(img.Attributes["src"].Value)
+        if (string.IsNullOrWhiteSpace(img.Attributes["src"]?.Value)
           || IsAbsoluteUrl(img.Attributes["src"].Value))
           continue;
 
@@ -242,7 +253,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 
       foreach (var a in doc.DocumentNode.Descendants("a"))
       {
-        if (string.IsNullOrWhiteSpace(a.Attributes["href"].Value)
+        if (string.IsNullOrWhiteSpace(a.Attributes["href"]?.Value)
           || IsAbsoluteUrl(a.Attributes["href"].Value))
           continue;
 
@@ -317,8 +328,9 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
         foreach (var feedData in feedsData)
         {
           var lastPubDate = feedData.FeedCfg.LastPubDate;
+          var feedItems = feedData.NewItems.Where(fi => fi.IsSelected).ToList();
 
-          foreach (var feedItem in feedData.NewItems.Where(fi => fi.IsSelected))
+          foreach (var feedItem in feedItems)
           {
             // published date time
             if (feedItem.PublishingDate.HasValue)
@@ -330,7 +342,8 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
             feedData.FeedCfg.EntriesGuid.Add(feedItem.Id);
           }
 
-          feedData.FeedCfg.LastRefreshDate = feedData.FeedCfg.PendingRefreshDate;
+          if (feedItems.Any())
+            feedData.FeedCfg.LastRefreshDate = feedData.FeedCfg.PendingRefreshDate;
         }
 
         Svc<FeedsPlugin>.Plugin.SaveConfig();

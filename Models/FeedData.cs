@@ -56,7 +56,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
 
     public FeedCfg           FeedCfg  { get; }
     public Feed              Feed     { get; }
-    public List<FeedItemExt> NewItems { get; } = new List<FeedItemExt>();
+    public List<FeedItemExt> NewItems { get; set; } = new List<FeedItemExt>();
 
     #endregion
   }
