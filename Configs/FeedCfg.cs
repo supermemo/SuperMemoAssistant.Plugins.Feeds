@@ -38,8 +38,8 @@ using System.Linq;
 using Forge.Forms.Annotations;
 using Newtonsoft.Json;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Types;
-using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Services;
+using SuperMemoAssistant.Services.HTML.Models;
 using SuperMemoAssistant.Services.UI.Configuration.ElementPicker;
 using SuperMemoAssistant.Sys.ComponentModel;
 
@@ -48,6 +48,8 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
   [Form(Mode = DefaultFields.None)]
   [Title("Feed Settings",
     IsVisible = "{Env DialogHostContext}")]
+  [DialogAction("manual import",
+    "Manual Import")]
   [DialogAction("cancel",
     "Cancel",
     IsCancel = true)]
@@ -110,9 +112,9 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
       {
         /* empty */
       }
-      get => RootDictElement == null
+      get => RootElement == null
         ? "N/A"
-        : RootDictElement.ToString();
+        : RootElement.ToString();
     }
 
     [JsonIgnore]
@@ -127,9 +129,9 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
                                     .ToHashSet();
     }
 
-    [Field(Name = "Content link regex")]
+    [Field]
     [DirectContent]
-    public FeedFilterRootViewModel FiltersRoot { get; set; } = new FeedFilterRootViewModel();
+    public HtmlFilters FiltersRoot { get; set; } = new HtmlFilters();
 
 
     //
@@ -150,10 +152,10 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     // Helpers
 
     [JsonIgnore]
-    public ObservableCollection<FeedFilter> Filters => FiltersRoot.Children;
+    public ObservableCollection<HtmlFilter> Filters => FiltersRoot.Children;
 
     [JsonIgnore]
-    public IElement RootDictElement => Svc.SMA.Registry.Element[RootDictElementId <= 0 ? 1 : RootDictElementId];
+    public IElement RootElement => Svc.SMA.Registry.Element[RootDictElementId <= 0 ? 1 : RootDictElementId];
 
     [JsonIgnore]
     public DateTime PendingRefreshDate { get; set; }

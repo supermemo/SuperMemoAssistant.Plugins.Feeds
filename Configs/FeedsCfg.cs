@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 23:06
-// Modified On:  2019/04/14 00:27
+// Modified On:  2019/04/22 13:42
 // Modified By:  Alexis
 
 #endregion
@@ -32,24 +32,19 @@
 
 using System.ComponentModel;
 using System.Linq;
-using Forge.Forms;
 using Forge.Forms.Annotations;
-using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Plugins.Feeds.Models;
-using SuperMemoAssistant.Services;
 using SuperMemoAssistant.Sys.ComponentModel;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Configs
 {
-  [Form(Mode                             = DefaultFields.None)]
-  [Action("runNow", "Run now", Placement = Placement.After)]
-  public class FeedsCfg : INotifyPropertyChangedEx, IActionHandler
+  [Form(Mode = DefaultFields.None)]
+  public class FeedsCfg : INotifyPropertyChangedEx
   {
     #region Properties & Fields - Non-Public
 
     private FeedList _feeds;
     private bool     _isChanged;
-    private bool     _ignoreAction;
 
     #endregion
 
@@ -102,23 +97,6 @@ namespace SuperMemoAssistant.Plugins.Feeds.Configs
     public override string ToString()
     {
       return "Feeds";
-    }
-
-    public void HandleAction(IActionContext actionContext)
-    {
-      if (_ignoreAction)
-      {
-        _ignoreAction = false;
-        return;
-      }
-
-      switch (actionContext.Action as string)
-      {
-        case "runNow":
-          Svc<FeedsPlugin>.Plugin.DownloadAndImportFeeds(false, false).RunAsync();
-          _ignoreAction = true;
-          break;
-      }
     }
 
     #endregion

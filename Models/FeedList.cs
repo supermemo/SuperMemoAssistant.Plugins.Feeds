@@ -22,7 +22,7 @@
 // 
 // 
 // Created On:   2019/04/10 18:06
-// Modified On:  2019/04/10 22:08
+// Modified On:  2019/04/22 14:22
 // Modified By:  Alexis
 
 #endregion
@@ -36,6 +36,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Forge.Forms;
 using SuperMemoAssistant.Plugins.Feeds.Configs;
+using SuperMemoAssistant.Services;
 using SuperMemoAssistant.Sys.Windows.Input;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Models
@@ -63,6 +64,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
     public ICommand NewCommand    => new AsyncRelayCommand(NewFeed);
     public ICommand DeleteCommand => new RelayCommand<FeedCfg>(DeleteFeed);
     public ICommand EditCommand   => new AsyncRelayCommand<FeedCfg>(EditFeed);
+    public ICommand RunNowCommand => new AsyncRelayCommand(RunNow);
 
     #endregion
 
@@ -75,7 +77,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
     {
       var feed = new FeedCfg();
       var res  = await Show.Window().For<FeedCfg>(feed);
-      
+
       if (res.Action is "cancel")
         return;
 
@@ -84,13 +86,18 @@ namespace SuperMemoAssistant.Plugins.Feeds.Models
 
     private void DeleteFeed(FeedCfg feed)
     {
-      if (Forge.Forms.Show.Window().For(new Confirmation("Are you sure ?")).Result.Model.Confirmed)
+      if (Show.Window().For(new Confirmation("Are you sure ?")).Result.Model.Confirmed)
         Remove(feed);
     }
 
     private Task EditFeed(FeedCfg feed)
     {
-      return Forge.Forms.Show.Window().For<FeedCfg>(feed);
+      return Show.Window().For<FeedCfg>(feed);
+    }
+
+    private Task RunNow()
+    {
+      return Svc<FeedsPlugin>.Plugin.DownloadAndImportFeeds(false, false);
     }
 
     #endregion

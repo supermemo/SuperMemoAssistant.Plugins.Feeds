@@ -32,7 +32,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -40,7 +39,6 @@ using System.Threading.Tasks;
 using Anotar.Serilog;
 using CodeHollow.FeedReader;
 using Forge.Forms;
-using HtmlAgilityPack;
 using SuperMemoAssistant.Extensions;
 using SuperMemoAssistant.Interop.SuperMemo.Content.Contents;
 using SuperMemoAssistant.Interop.SuperMemo.Elements.Builders;
@@ -49,6 +47,8 @@ using SuperMemoAssistant.Plugins.Feeds.Configs;
 using SuperMemoAssistant.Plugins.Feeds.Extensions;
 using SuperMemoAssistant.Plugins.Feeds.Models;
 using SuperMemoAssistant.Services;
+using SuperMemoAssistant.Services.HTML;
+using SuperMemoAssistant.Services.HTML.Extensions;
 
 namespace SuperMemoAssistant.Plugins.Feeds.Tasks
 {
@@ -105,10 +105,6 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       var client    = new HttpClient(new HttpClientHandler { UseCookies = false });
       
       client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
-      client.DefaultRequestHeaders.Add("Accept-Language", "en-GB,en;q=0.5");
-      client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate");
-      client.DefaultRequestHeaders.Add("Accept", "text/html;q=0.9,*/*;q=0.8");
-      //client.DefaultRequestHeaders.Add("Connection", "close");
 
       if (string.IsNullOrWhiteSpace(feedCfg.Cookie) == false)
         client.DefaultRequestHeaders.Add("Cookie", feedCfg.Cookie);
@@ -190,7 +186,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
           {
             feedItem.Content = null;
             LogTo.Warning(
-              $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}'. HTTP Status code : {httpResp?.StatusCode}");
+              $"Failed to download content for feed {feedCfg.Name}, item title '{feedItem.Title}', link '{feedItem.MakeLink(feedCfg)}'. HTTP Status code : {httpResp?.StatusCode}");
           }
         }
 
@@ -214,14 +210,14 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
           );
 
         if (feedItem.Link != null)
-          feedItem.Content = FixRelativeLinks(feedItem.Content, new Uri(feedItem.MakeLink(feedCfg)));
+          feedItem.Content = HtmlUtils.EnsureAbsoluteLinks(feedItem.Content, new Uri(feedItem.MakeLink(feedCfg)));
 
         // Add feed item
         return new FeedItemExt(feedItem);
       }
       catch (Exception ex)
       {
-        LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}'");
+        LogTo.Error(ex, $"Exception while downloading content for feed {feedCfg.Name}, item title '{feedItem.Title}', link '{feedItem.MakeLink(feedCfg)}'");
       }
       finally
       {
@@ -229,49 +225,6 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
       }
 
       return null;
-    }
-
-    private static string FixRelativeLinks(string html, Uri baseUri)
-    {
-      var writer = new StringWriter();
-      var doc    = new HtmlDocument();
-
-      doc.LoadHtml(html);
-
-      foreach (var img in doc.DocumentNode.Descendants("img"))
-      {
-        if (string.IsNullOrWhiteSpace(img.Attributes["src"]?.Value)
-          || IsAbsoluteUrl(img.Attributes["src"].Value))
-          continue;
-
-        var uri = new Uri(
-          baseUri,
-          img.Attributes["src"].Value
-        );
-        img.Attributes["src"].Value = uri.AbsoluteUri;
-      }
-
-      foreach (var a in doc.DocumentNode.Descendants("a"))
-      {
-        if (string.IsNullOrWhiteSpace(a.Attributes["href"]?.Value)
-          || IsAbsoluteUrl(a.Attributes["href"].Value))
-          continue;
-
-        var uri = new Uri(
-          baseUri,
-          a.Attributes["href"].Value
-        );
-        a.Attributes["href"].Value = uri.AbsoluteUri;
-      }
-
-      doc.Save(writer);
-
-      return writer.ToString();
-    }
-
-    private static bool IsAbsoluteUrl(string url)
-    {
-      return Uri.TryCreate(url, UriKind.Absolute, out _);
     }
 
 #pragma warning disable 1998
@@ -294,7 +247,7 @@ namespace SuperMemoAssistant.Plugins.Feeds.Tasks
           builders.Add(
             new ElementBuilder(ElementType.Topic,
                                new TextContent(true, feedItem.Content))
-              .WithParent(feedData.FeedCfg.RootDictElement)
+              .WithParent(feedData.FeedCfg.RootElement)
               .WithPriority(feedData.FeedCfg.Priority)
               .WithReference(
                 // ReSharper disable once PossibleInvalidOperationException

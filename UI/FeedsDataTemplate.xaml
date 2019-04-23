@@ -23,30 +23,34 @@
         <RowDefinition Height="300" />
       </Grid.RowDefinitions>
 
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="auto" />
-      </Grid.ColumnDefinitions>
-      
-      <TextBlock Grid.Row="0"
-                 Grid.Column="0"
-                 Text="Configured feeds"
-                 FontSize="18"
-                 FontWeight="Bold" />
-      
-      <Button Grid.Row="0"
-              Grid.Column="1"
-              Command="{Binding NewCommand}">
-        <fa5:SvgAwesome Icon="Solid_Plus"
-                        Width="16"
-                        Height="16"
-                        VerticalAlignment="Center" />
-      </Button>
+      <Grid Grid.Row="0"
+            Grid.Column="0">
+
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="auto" />
+          <ColumnDefinition Width="auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0"
+                   Text="Configured feeds"
+                   FontSize="18"
+                   FontWeight="Bold" />
+
+        <Button Grid.Column="1"
+                Command="{Binding RunNowCommand}"
+                Content="Run now" />
+
+        <Button Grid.Column="2"
+                Command="{Binding NewCommand}">
+          <fa5:SvgAwesome Icon="Solid_Plus"
+                          Width="16"
+                          Height="16"
+                          VerticalAlignment="Center" />
+        </Button>
+      </Grid>
 
       <ListBox Name="lbFeeds"
                Grid.Row="1"
-               Grid.Column="0"
-               Grid.ColumnSpan="2"
                Margin="0 20 0 0"
                ItemsSource="{Binding Source={StaticResource SortedFeeds}}">
         <ListBox.ItemTemplate>
